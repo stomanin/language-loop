@@ -11,11 +11,9 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 # Telegram Bot token from BotFather
 TOKEN = os.getenv('LANGUAGE_LOOP_TELEGRAM_BOT_TOKEN')
 
-from dotenv import load_dotenv, find_dotenv
-_ = load_dotenv(find_dotenv()) # read local .env file
 
 # OPENAI token and configs
-MODEL = "gpt-3.5-turbo"
+MODEL = "gpt-4o"
 TEMPERATURE = 0 #degree of randomness of the model's output
 
 def get_completion_from_messages(messages, model=MODEL, temperature=TEMPERATURE):
@@ -52,11 +50,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.is_bot == False:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Hello, I'm your LanguageLoop Bot, I am here to help master a language!"
+            text="Hello, I'm your LanguageLoop Bot!"
         )
-        print("1")
         responses = get_completion_from_messages(messages)
-        print("2")
         await context.bot.send_message(chat_id=update.effective_chat.id, text=responses)
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -101,9 +97,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def chatgptbot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("3")
     if update.message.from_user.is_bot == False:
-        print("4")
         response = save_context_get_response(update.message.text)
-        print("5")
         #returns the response
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
 
