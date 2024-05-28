@@ -6,6 +6,8 @@ from openai import OpenAI
 from telegram import Update
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes
 
+from db import create_database, save_user_data, load_user_data
+
 load_dotenv()
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 # Telegram Bot token from BotFather
@@ -17,27 +19,42 @@ MODEL = "gpt-4o"
 TEMPERATURE = 0 #degree of randomness of the model's output
 
 def get_completion_from_messages(messages, model=MODEL, temperature=TEMPERATURE):
-    print("a")
     time.sleep(1)  # Pause for 1 second between requests
     response = client.chat.completions.create(model=model,messages=messages,temperature=temperature)
-    print("b")
     return response.choices[0].message.content
 
-def save_context_get_response(text):
-    #adds the user input to the context with user role
-    messages.append({'role':'user', 'content':f"{text}"})
-    #gets the response
-    response = get_completion_from_messages(messages) 
+def save_context_get_response(user_id, text):
+    messages = load_user_data(user_id)
+    print("1")
+    messages.append({'role': 'user', 'content': f"{text}"})
+    print("2")
+    response = get_completion_from_messages(messages)
+    print("3")
     print(response)
-    #saves the context for history
-    messages.append({'role':'assistant', 'content':f"{response}"})
+    messages.append({'role': 'assistant', 'content': f"{response}"})
+    print("4")
+    save_user_data(user_id, messages)
+    print("5")
+    print(user_id)
     print(messages)
     return response
 
+#def save_context_get_response(text):
+    #adds the user input to the context with user role
+#    messages.append({'role':'user', 'content':f"{text}"})
+    #gets the response
+#    response = get_completion_from_messages(messages) 
+#    print(response)
+    #saves the context for history
+#    messages.append({'role':'assistant', 'content':f"{response}"})
+#    print(messages)
+#    return response
+
 # system instructions
 from prompt import system_instructions
-messages =  []
-messages.append({'role':'system', 'content':f"{system_instructions}"})
+#messages =  []
+#messages.append({'role':'system', 'content':f"{system_instructions}"})
+system_message = {'role': 'system', 'content': f"{system_instructions}"}
 
 # setting up logging module, to know when (and why) things don't work as expected
 logging.basicConfig(
@@ -46,17 +63,28 @@ logging.basicConfig(
 )
 
 # start function called every time the Bot receives a Telegram message that contains the /start command
+#async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#    if update.message.from_user.is_bot == False:
+#        await context.bot.send_message(
+#            chat_id=update.effective_chat.id,
+#            text="Hello, I'm your LanguageLoop Bot!"
+#        )
+#        responses = get_completion_from_messages(messages)
+#        await context.bot.send_message(chat_id=update.effective_chat.id, text=responses)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.is_bot == False:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Hello, I'm your LanguageLoop Bot!"
-        )
-        responses = get_completion_from_messages(messages)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=responses)
+    user_id = update.message.from_user.id
+    if not update.message.from_user.is_bot:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Hello, I'm your LanguageLoop Bot!")
+        messages = load_user_data(user_id)
+        if not messages:
+            messages.append(system_message)
+            save_user_data(user_id, messages)
+        response = get_completion_from_messages(messages)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     print("audio handler")
+    user_id = update.message.from_user.id
     if update.message.from_user.is_bot == False:
         if update.message.voice:
             file_id = update.message.voice.file_id
@@ -74,12 +102,15 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     file=audio_file,
                     response_format="text"
                 )
-            print(transcription)
             # delete downloaded audio file after the transcription is done
             os.remove(f"downloaded_audio_{file_id}.ogg")
             
-            response = save_context_get_response(transcription)
-            
+            response = save_context_get_response(user_id, transcription)
+            #returns the submitted audio in text for feedback
+            transcribed_message = "You said:"+transcription
+            print(transcribed_message)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=transcribed_message)
+
             # text to speech
             synthesis_result = client.audio.speech.create(input=response, model="tts-1", voice='fable')
             synthesis_result.stream_to_file("speech.ogg")
@@ -94,15 +125,21 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
 
 # triggers the openai bot 
-async def chatgptbot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("3")
-    if update.message.from_user.is_bot == False:
-        response = save_context_get_response(update.message.text)
+#async def chatgptbot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#    if update.message.from_user.is_bot == False:
+#        response = save_context_get_response(update.message.text)
         #returns the response
+#        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+
+async def chatgptbot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not update.message.from_user.is_bot:
+        response = save_context_get_response(user_id, update.message.text)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
 
 
 if __name__ == '__main__':
+    create_database()
     application = ApplicationBuilder().token(TOKEN).build()
     # /start command handler
     start_handler = CommandHandler('start', start)
